@@ -27,7 +27,7 @@ const DEV_PICK_MODE = import.meta.env.DEV
 
 // ── BikeViewer ───────────────────────────────────────────────────────────
 export default function BikeViewer({ groupRef }) {
-  const { scene } = useGLTF(resolveAsset('/models/Grops Bikes1.glb'))
+  const { scene } = useGLTF(resolveAsset('/models/Bike_optimized.glb'), resolveAsset('/draco/'))
   const { invalidate } = useThree()
   const navigate = useNavigate()
 
