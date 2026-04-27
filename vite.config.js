@@ -6,8 +6,33 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// ── Exclude large unused assets from dist/ ──────────────────────────
+// These files exist in /public/ for Electron dev but must NOT land in the
+// web build — they inflate Firebase CDN bandwidth with files never loaded.
+const EXCLUDE_FROM_BUILD = [
+  /models[\/\\]Grops Bikes1\.glb$/i,
+  /models[\/\\]Grops_Bikes1_draco\.glb$/i,
+  /models[\/\\]Bike_draco\.glb$/i,
+  /models[\/\\]Bike[\/\\]/i,         // entire Bike/ duplicate folder
+  /mapper\.html$/i,
+]
+
+function excludeAssetsPlugin() {
+  return {
+    name: 'exclude-large-assets',
+    // Intercept every public-asset copy during build
+    generateBundle(_options, bundle) {
+      for (const name of Object.keys(bundle)) {
+        if (EXCLUDE_FROM_BUILD.some(re => re.test(name))) {
+          delete bundle[name]
+        }
+      }
+    },
+  }
+}
+
 export default defineConfig(({ command }) => ({
-  plugins: [react()],
+  plugins: [react(), excludeAssetsPlugin()],
   // Use './' only for production Electron builds (assets must be relative to index.html).
   // In the dev server, always use '/' — relative base causes React to load from
   // different module URLs, creating duplicate React instances and breaking hooks.
@@ -25,6 +50,23 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: 'dist',
     assetsInlineLimit: 0,  // never inline models/textures
+    rollupOptions: {
+      output: {
+        // Split vendor libs into separate cached chunks.
+        // Rolldown (Vite 8) requires manualChunks as a function.
+        manualChunks(id) {
+          if (id.includes('node_modules/three/'))            return 'three-vendor'
+          if (id.includes('@react-three/fiber') ||
+              id.includes('@react-three/drei'))              return 'r3f-vendor'
+          if (id.includes('node_modules/gsap') ||
+              id.includes('@gsap/react'))                    return 'gsap-vendor'
+          if (id.includes('node_modules/zustand/'))          return 'zustand'
+          if (id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/react/') ||
+              id.includes('node_modules/react-router'))      return 'react-vendor'
+        },
+      },
+    },
   },
   optimizeDeps: {
     include: ['react-router-dom', '@react-three/fiber', '@react-three/drei'],

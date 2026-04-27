@@ -10,6 +10,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Schaeffler 2W Showroom</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Preload main 3D model — browser fetches it in parallel with JS parsing -->
+    <link rel="preload" href="./models/Grops_Bikes1_draco.glb" as="fetch" crossorigin="anonymous" />
+    <!-- DNS preconnect for Firebase hosting CDN (speeds up asset fetches after deploy) -->
+    <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
     <style>
       body { margin: 0; background: #FFFFFF; overflow: hidden; }
       /* Safe area insets for notch/punch-hole displays */

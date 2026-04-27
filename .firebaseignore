@@ -1,0 +1,17 @@
+# Firebase deploy exclusions
+# These files are NOT needed by the web app and would inflate CDN bandwidth.
+# The web build only serves files from the 'dist/' directory.
+
+# Large uncompressed / alternate bike models (not referenced in code)
+public/models/Grops Bikes1.glb
+public/models/Bike_draco.glb
+
+# Duplicate Part GLBs (same files exist in public/models/Parts/)
+public/models/Bike/
+
+# Dev-only files
+public/mapper.html
+print_ids.cjs
+scratch/
+bike_names.json
+part_names.json

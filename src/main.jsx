@@ -12,7 +12,7 @@ useGLTF.setDecoderPath(resolveAsset('/draco/'))
 
 // ── Preload the main bike model as early as possible ──────────
 // Runs at module import time — before React mounts.
-useGLTF.preload(resolveAsset('/models/Bike_optimized.glb'), resolveAsset('/draco/'))
+useGLTF.preload(resolveAsset('/models/Grops_Bikes1_draco.glb'), resolveAsset('/draco/'))
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <HashRouter>

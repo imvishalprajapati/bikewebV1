@@ -133,9 +133,10 @@ export default function Home() {
   const navigate = useNavigate()
 
   // ── Mobile detection ──────────────────────────────────────────────────
-  // Cap DPR at 1.0 on mobile — S10+ has DPR 3.5 so rendering at full res is wasteful
   const isMobileDevice = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-  const [dpr, setDpr] = useState(isMobileDevice ? 1.0 : 1.5)
+  // Start at 1.0 universally — PerformanceMonitor raises/lowers based on real GPU headroom.
+  // DPR 1.0 = full-resolution pixels, zero MSAA cost, compatible with every GPU.
+  const [dpr, setDpr] = useState(1.0)
 
   // Device-aware FOV: wider on phone so the bike fits without zooming out
   const [cameraFov, setCameraFov] = useState(() => {
@@ -178,23 +179,25 @@ export default function Home() {
           frameloop="demand"
           camera={{ position: [-6.0, 1.5, 4.0], fov: cameraFov }}
           gl={{
-            antialias: !isMobileDevice,       /* disable HW AA on mobile — DPR handles it */
+            antialias: false,                  /* HW MSAA off — DPR≥1 gives equivalent quality at lower cost */
             powerPreference: 'high-performance'
           }}
           dpr={dpr}
           style={{ background: 'transparent' }}
         >
-          {/* Drop DPR on performance decline; clamp to 0.75 floor */}
-          <PerformanceMonitor onDecline={() => setDpr(prev => Math.max(prev - 0.25, 0.75))} />
+          {/* Adaptive quality — lowers DPR to 0.5 on struggling GPUs, raises to 1.5 when headroom exists */}
+          <PerformanceMonitor
+            onDecline={() => setDpr(prev => Math.max(prev - 0.25, 0.5))}
+            onIncline={() => setDpr(prev => Math.min(prev + 0.25, 1.5))}
+          />
           <color attach="background" args={['#FFFFFF']} />
 
 
           <Suspense fallback={null}>
-            {/* Lighting */}
-            <ambientLight intensity={0.6} />
-            <directionalLight position={[5, 8, 5]} intensity={1.5} />
-            <directionalLight position={[-5, 4, -5]} intensity={0.4} color="#00893D" />
-            <pointLight position={[0, 4, 0]} intensity={0.6} />
+            {/* Lighting — 2 directional lights only; point + hemisphere removed for GPU budget */}
+            <ambientLight intensity={0.7} />
+            <directionalLight position={[5, 8, 5]} intensity={1.4} />
+            <directionalLight position={[-5, 4, -5]} intensity={0.3} />
 
             {/* Bike scene */}
             <Bounds fit clip margin={1.7}>
@@ -206,8 +209,7 @@ export default function Home() {
               </Bvh>
             </Bounds>
 
-            {/* Offline-safe ambient fill — no HDR fetch needed */}
-            <hemisphereLight args={['#e8f4ff', '#f0f0e8', 0.6]} />
+            {/* hemisphereLight removed — ambientLight covers the fill role */}
           </Suspense>
 
           {/* ZoomWatcher and OrbitControls live outside Suspense so they

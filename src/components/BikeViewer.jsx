@@ -27,7 +27,7 @@ const DEV_PICK_MODE = import.meta.env.DEV
 
 // ── BikeViewer ───────────────────────────────────────────────────────────
 export default function BikeViewer({ groupRef }) {
-  const { scene } = useGLTF(resolveAsset('/models/Bike_optimized.glb'), resolveAsset('/draco/'))
+  const { scene } = useGLTF(resolveAsset('/models/Grops_Bikes1_draco.glb'), resolveAsset('/draco/'))
   const { invalidate } = useThree()
   const navigate = useNavigate()
 
@@ -52,151 +52,109 @@ export default function BikeViewer({ groupRef }) {
 
   // ── 1. Scene setup: compute explode dirs + build component groups ────────
   useEffect(() => {
-    if (!scene || !groupRef?.current) return
+    if (!scene) return
 
-    // Bike bounding-box center in scene-local space (for explode directions)
-    const bbox = new THREE.Box3().setFromObject(scene)
-    const bikeCenter = new THREE.Vector3()
-    bbox.getCenter(bikeCenter)
-
-    scene.traverse(child => {
-      if (!child.isMesh) return;
-
-      // Temporary log to see exactly how Three.js formats the Fuel Injector string
-      // if (child.name.includes("049")) {
-      //   console.log("TRUE THREE.JS NAME FOR 049 IS:", child.name);
-      // }
-      // ...
-    })
-
-    // ── DEV: Print the bike's bounding box IN GROUP-LOCAL space ───────────
-    // Since the group has only uniform scale + translation (no rotation),
-    // we can worldToLocal the two AABB corners to get the anchor coordinate range.
-    if (import.meta.env.DEV && groupRef.current) {
-      const minW = bbox.min.clone()
-      const maxW = bbox.max.clone()
-      // Transform scene-local → world (scene has no transform as <primitive>)
-      // scene-local = world here because scene sits at the group's child level
-      // and <primitive object={scene}> has no position offset by default.
-      // So we just need groupRef.worldToLocal:
-      const minL = groupRef.current.worldToLocal(minW)
-      const maxL = groupRef.current.worldToLocal(maxW)
-      // Note: worldToLocal inverts scale so min/max may swap axes — take true min/max
-      const trueMin = new THREE.Vector3(Math.min(minL.x, maxL.x), Math.min(minL.y, maxL.y), Math.min(minL.z, maxL.z))
-      const trueMax = new THREE.Vector3(Math.max(minL.x, maxL.x), Math.max(minL.y, maxL.y), Math.max(minL.z, maxL.z))
-      const trueCenter = trueMin.clone().add(trueMax).multiplyScalar(0.5)
-      const trueSize = trueMax.clone().sub(trueMin)
-      // console.log('%c[BikeViewer] GROUP-LOCAL bounding box (= anchor coordinate space):',
-      //   'color:#ff8c00;font-weight:bold')
-      // console.log(`  min:    [${trueMin.x.toFixed(3)}, ${trueMin.y.toFixed(3)}, ${trueMin.z.toFixed(3)}]`)
-      // console.log(`  max:    [${trueMax.x.toFixed(3)}, ${trueMax.y.toFixed(3)}, ${trueMax.z.toFixed(3)}]`)
-      // console.log(`  center: [${trueCenter.x.toFixed(3)}, ${trueCenter.y.toFixed(3)}, ${trueCenter.z.toFixed(3)}]`)
-      // console.log(`  size:   ${trueSize.x.toFixed(3)} × ${trueSize.y.toFixed(3)} × ${trueSize.z.toFixed(3)}`)
-      // console.log('  Anchors should use values within this range!')
+    // ── Wait for the R3F group to mount ────────────────────────────────────
+    // groupRef.current changes do NOT re-trigger useEffect (refs are mutable,
+    // not reactive). When GLB is preloaded, scene is ready before the R3F
+    // group element mounts. We poll with rAF until groupRef.current is set.
+    let rafId
+    function runMapping() {
+      if (!groupRef?.current) {
+        rafId = requestAnimationFrame(runMapping)
+        return
+      }
+      doMapping()
     }
 
-    // Pre-init groups
-    const groups = {}
-    ANCHOR_ENTRIES.forEach(({ id }) => { groups[id] = [] })
+    function doMapping() {
+      const bbox = new THREE.Box3().setFromObject(scene)
+      const bikeCenter = new THREE.Vector3()
+      bbox.getCenter(bikeCenter)
 
-    let totalMeshes = 0
-    let assignedMeshes = 0
-
-    scene.traverse(child => {
-      if (!child.isMesh) return
-      totalMeshes++
-
-      // ─ Explode setup ───────────────────────────────────────────────
-      child.userData.origPos = child.position.clone()
-
-      const mbox = new THREE.Box3().setFromObject(child)
-      const mCenter = new THREE.Vector3()
-      mbox.getCenter(mCenter)
-
-      const dir = mCenter.clone().sub(bikeCenter)
-      const len = dir.length()
-      child.userData.explodeDir = len > 0.001 ? dir.normalize() : new THREE.Vector3(0, 1, 0)
-      // ─ Component-group assignment ──────────────────────────────────
-      // Clear any prior assignments
-      child.userData.componentId = null
-    })
-
-    // Pre-map the components that have explicitly assigned targetMeshes
-    assignedMeshes = 0
-
-    // DEV: Automatically calculate exact anchor positions and print them to console
-    if (import.meta.env.DEV) {
-      // console.groupCollapsed('%c[BikeViewer] AUTO-CALCULATED ANCHORS', 'color:#00ff00;font-weight:bold');
-      // console.log('Copy these exact values into components.js replacing the [0,0,0] anchors:');
-    }
-
-    const setDynamicAnchors = useShowroomStore.getState().setDynamicAnchors
-    const calculatedAnchors = {}
-    const unmappedIds = []
-
-    const filteredComponents = components.filter(c => c.category !== 'Electrification')
-
-    filteredComponents.forEach(comp => {
-      let compBBox = new THREE.Box3();
-      let hasMeshes = false;
-
+      let totalMeshes = 0
+      const allMeshNames = []
       scene.traverse(child => {
         if (!child.isMesh) return
+        totalMeshes++
+        allMeshNames.push(child.name)
+        child.userData.origPos = child.position.clone()
+        const mbox = new THREE.Box3().setFromObject(child)
+        const mCenter = new THREE.Vector3()
+        mbox.getCenter(mCenter)
+        const dir = mCenter.clone().sub(bikeCenter)
+        const len = dir.length()
+        child.userData.explodeDir = len > 0.001 ? dir.normalize() : new THREE.Vector3(0, 1, 0)
+        child.userData.componentId = null
+      })
 
-        let isMatch = isMeshMatch(child.name, comp.targetMeshes, comp.id);
+      if (import.meta.env.DEV) {
+        const unique = [...new Set(allMeshNames)].sort()
+        console.groupCollapsed('%c[BikeViewer] ALL MESH NAMES IN SCENE (' + unique.length + ' unique)', 'color:#ff8c00;font-weight:bold')
+        unique.forEach(n => console.log(n))
+        console.groupEnd()
+      }
 
-        // Check if any parent group matches the component name
-        if (!isMatch) {
-          let parent = child.parent;
-          while (parent && (parent.isGroup || parent.isObject3D)) {
-            if (isMeshMatch(parent.name, comp.targetMeshes, comp.id)) {
-              isMatch = true;
-              break;
+      const setDynamicAnchors = useShowroomStore.getState().setDynamicAnchors
+      const calculatedAnchors = {}
+      const unmappedIds = []
+      const filteredComponents = components.filter(c => c.category !== 'Electrification')
+
+      filteredComponents.forEach(comp => {
+        let compBBox = new THREE.Box3()
+        let hasMeshes = false
+
+        scene.traverse(child => {
+          if (!child.isMesh) return
+
+          let isMatch = isMeshMatch(child.name, comp.targetMeshes, comp.id)
+          if (!isMatch) {
+            let parent = child.parent
+            while (parent && (parent.isGroup || parent.isObject3D)) {
+              if (isMeshMatch(parent.name, comp.targetMeshes, comp.id)) {
+                isMatch = true
+                break
+              }
+              parent = parent.parent
             }
-            parent = parent.parent;
           }
-        }
 
-        if (isMatch) {
-          child.userData.componentId = comp.id
-          assignedMeshes++
+          if (isMatch) {
+            child.userData.componentId = comp.id
+            if (!meshesByComponentRef.current[comp.id]) meshesByComponentRef.current[comp.id] = []
+            meshesByComponentRef.current[comp.id].push(child)
+            const mbox = new THREE.Box3().setFromObject(child)
+            compBBox.expandByPoint(mbox.min)
+            compBBox.expandByPoint(mbox.max)
+            hasMeshes = true
+          }
+        })
 
-          // Build pre-computed lookup for O(k) highlighting
-          if (!meshesByComponentRef.current[comp.id]) meshesByComponentRef.current[comp.id] = []
-          meshesByComponentRef.current[comp.id].push(child)
-
-          let mbox = new THREE.Box3().setFromObject(child);
-          compBBox.expandByPoint(mbox.min);
-          compBBox.expandByPoint(mbox.max);
-          hasMeshes = true;
+        if (hasMeshes && groupRef.current) {
+          const centerWorld = new THREE.Vector3()
+          compBBox.getCenter(centerWorld)
+          const centerLocal = groupRef.current.worldToLocal(centerWorld.clone())
+          calculatedAnchors[comp.id] = [centerLocal.x, centerLocal.y, centerLocal.z]
+        } else {
+          unmappedIds.push(comp.id)
         }
       })
 
-      // Store calculated anchor
-      if (hasMeshes && groupRef.current) {
-        let centerWorld = new THREE.Vector3();
-        compBBox.getCenter(centerWorld);
-        let centerLocal = groupRef.current.worldToLocal(centerWorld);
-        calculatedAnchors[comp.id] = [centerLocal.x, centerLocal.y, centerLocal.z];
-      } else {
-        unmappedIds.push(comp.id)
+      setDynamicAnchors(calculatedAnchors)
+
+      if (import.meta.env.DEV) {
+        console.groupCollapsed('%c[BikeViewer] MAPPING REPORT', 'color:#00893D;font-weight:bold')
+        console.log(`Total meshes in scene: ${totalMeshes}`)
+        console.log(`Mapped: ${filteredComponents.length - unmappedIds.length} / ${filteredComponents.length} components`)
+        if (unmappedIds.length > 0) console.warn('Unmapped:', unmappedIds)
+        console.log('Anchors:', calculatedAnchors)
+        console.groupEnd()
       }
-    })
-
-    // Push all calculated anchors to store at once
-    setDynamicAnchors(calculatedAnchors)
-
-    if (import.meta.env.DEV) {
-      // console.groupCollapsed('%c[BikeViewer] MAPPING REPORT', 'color:#00893D;font-weight:bold');
-      // console.log(`Total Meshes: ${totalMeshes}`);
-      // console.log(`Successfully mapped: ${components.length - unmappedIds.length} components`);
-      // if (unmappedIds.length > 0) {
-      //   console.warn(`Failed to map ${unmappedIds.length} components:`, unmappedIds);
-      //   console.log('Suggestions: Update components.js targetMeshes with substrings of actual mesh names.');
-      // }
-      // console.groupEnd();
     }
-  }, [scene, groupRef])
+
+    rafId = requestAnimationFrame(runMapping)
+    return () => { if (rafId) cancelAnimationFrame(rafId) }
+  }, [scene])
 
   // ── 2. Per-frame explode animation ──────────────────────────────────────
   useFrame(() => {
